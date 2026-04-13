@@ -116,6 +116,8 @@ export function JobsPage({
   onCreate,
   onRetry,
   onUploadAsset,
+  systemAuthVerified,
+  onOpenSystemAuth,
 }: {
   meta: MetaRecord | null;
   profiles: Profile[];
@@ -123,6 +125,8 @@ export function JobsPage({
   onCreate: (payload: Record<string, unknown>) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
   onUploadAsset: (profileId: string, file: File) => Promise<ProfileAssetRecord>;
+  systemAuthVerified: boolean;
+  onOpenSystemAuth: () => void;
 }) {
   const [profileId, setProfileId] = useState("");
   const [target, setTarget] = useState<JobTarget>("image");
@@ -143,6 +147,7 @@ export function JobsPage({
   const isGrokVideo = selectedProfile?.category === "grok" && target === "video";
   const submitDisabled =
     !profileId ||
+    !systemAuthVerified ||
     ((isGrokImage || (isGrokVideo && videoMode === "image_to_video")) ? !sourceAssetPath && !prompt.trim() : !prompt.trim());
   const reviewProfile = profiles.find((profile) => profile.id === reviewJob?.profile_id);
   const reviewMedia = getMediaUrls(reviewJob);
@@ -213,7 +218,21 @@ export function JobsPage({
   const activeReviewPreviewUrl = activeReviewPreviewSource ? toBackendStorageUrl(activeReviewPreviewSource) : null;
 
   return (
-    <div className="page">
+    <div className={`page ${systemAuthVerified ? "" : "system-auth-locked"}`}>
+      {!systemAuthVerified ? (
+        <div className="system-auth-overlay">
+          <div className="system-auth-card">
+            <p className="eyebrow">System Auth Required</p>
+            <h3>Playground is locked</h3>
+            <p className="muted">
+              Verify a Gateway API Key before running execute, async submit, or request-status checks from the Playground.
+            </p>
+            <button className="action-button" type="button" onClick={onOpenSystemAuth}>
+              Open System Auth
+            </button>
+          </div>
+        </div>
+      ) : null}
       <section className="page-band">
         <div className="page-heading">
           <div>
