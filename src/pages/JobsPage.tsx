@@ -117,6 +117,8 @@ export function JobsPage({
   onRetry,
   onDelete,
   onUploadAsset,
+  systemAuthVerified,
+  onOpenSystemAuth,
 }: {
   meta: MetaRecord | null;
   profiles: Profile[];
@@ -125,6 +127,8 @@ export function JobsPage({
   onRetry: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onUploadAsset: (profileId: string, file: File) => Promise<ProfileAssetRecord>;
+  systemAuthVerified: boolean;
+  onOpenSystemAuth: () => void;
 }) {
   const [profileId, setProfileId] = useState("");
   const [target, setTarget] = useState<JobTarget>("image");
@@ -132,6 +136,7 @@ export function JobsPage({
   const [negativePrompt, setNegativePrompt] = useState("");
   const [count, setCount] = useState(1);
   const [videoMode, setVideoMode] = useState<"text_to_video" | "image_to_video">("text_to_video");
+  const [aspectRatio, setAspectRatio] = useState("1:1");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceAssetPath, setSourceAssetPath] = useState("");
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState("");
@@ -144,6 +149,7 @@ export function JobsPage({
   const isGrokVideo = selectedProfile?.category === "grok" && target === "video";
   const submitDisabled =
     !profileId ||
+    !systemAuthVerified ||
     ((isGrokImage || (isGrokVideo && videoMode === "image_to_video")) ? !sourceAssetPath && !prompt.trim() : !prompt.trim());
   const reviewProfile = profiles.find((profile) => profile.id === reviewJob?.profile_id);
   const reviewMedia = getMediaUrls(reviewJob);
@@ -155,6 +161,7 @@ export function JobsPage({
 
   useEffect(() => {
     setVideoMode("text_to_video");
+    setAspectRatio("1:1");
     setSourceFile(null);
     setSourceAssetPath("");
     setSourcePreviewUrl("");
@@ -212,6 +219,25 @@ export function JobsPage({
   const activeReviewPreviewSource = getFirstAvailablePreview([activeReviewMedia, reviewDebugScreenshot], failedPreviews);
   const activeReviewPreviewUrl = activeReviewPreviewSource ? toBackendStorageUrl(activeReviewPreviewSource) : null;
 
+  if (!systemAuthVerified) {
+    return (
+      <div className="page system-auth-locked">
+        <div className="system-auth-overlay">
+          <div className="system-auth-card">
+            <p className="eyebrow">System Auth Required</p>
+            <h3>Playground is locked</h3>
+            <p className="muted">
+              Verify a Gateway API Key before running execute, async submit, or request-status checks from the Playground.
+            </p>
+            <button className="action-button" type="button" onClick={onOpenSystemAuth}>
+              Open System Auth
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <section className="page-band">
@@ -256,6 +282,18 @@ export function JobsPage({
               >
                 <option value="text_to_video">Text to video</option>
                 <option value="image_to_video">Image to video</option>
+              </select>
+            </label>
+          ) : null}
+          {selectedProfile?.category === "grok" ? (
+            <label>
+              <span>Aspect ratio</span>
+              <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
+                <option value="1:1">1:1</option>
+                <option value="2:3">2:3</option>
+                <option value="3:2">3:2</option>
+                <option value="9:16">9:16</option>
+                <option value="16:9">16:9</option>
               </select>
             </label>
           ) : null}
@@ -306,9 +344,11 @@ export function JobsPage({
                   ? {
                       video_mode: videoMode,
                       source_asset_path: videoMode === "image_to_video" ? sourceAssetPath || null : null,
+                      aspect_ratio: aspectRatio,
                     }
                   : {
                       source_asset_path: isGrokImage ? sourceAssetPath || null : null,
+                      aspect_ratio: selectedProfile?.category === "grok" ? aspectRatio : undefined,
                     },
               });
               setPrompt("");
