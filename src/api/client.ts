@@ -47,10 +47,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         const state = payload.detail.session_state ? ` (${payload.detail.session_state})` : "";
         throw new Error(`${summary}${state}`);
       }
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
+    } catch {
+      throw new Error(text || `Request failed: ${response.status}`);
     }
     throw new Error(text || `Request failed: ${response.status}`);
   }
