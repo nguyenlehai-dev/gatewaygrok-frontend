@@ -24,6 +24,8 @@ import type {
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+const SYSTEM_AUTH_KEY = "gateway_system_api_key";
+const SYSTEM_AUTH_NAME = "gateway_system_api_key_name";
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
@@ -41,6 +43,12 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getAdminToken()));
   const [bootstrapUser, setBootstrapUser] = useState<AuthBootstrap | null>(null);
+  const [systemAuthKey, setSystemAuthKey] = useState(() => window.localStorage.getItem(SYSTEM_AUTH_KEY) ?? "");
+  const [systemAuthName, setSystemAuthName] = useState(() => window.localStorage.getItem(SYSTEM_AUTH_NAME) ?? "Studio Key");
+  const [systemAuthVerified, setSystemAuthVerified] = useState(false);
+  const [systemAuthOpen, setSystemAuthOpen] = useState(false);
+  const [systemAuthBusy, setSystemAuthBusy] = useState(false);
+  const [systemAuthError, setSystemAuthError] = useState("");
 
   const pushToast = useCallback((type: Toast["type"], message: string) => {
     setToast({ type, message });
@@ -103,6 +111,15 @@ function App() {
     }
     void refreshAll();
   }, [isAuthenticated, refreshAll]);
+
+  useEffect(() => {
+    if (!lastCreatedKey) {
+      return;
+    }
+    setSystemAuthKey(lastCreatedKey);
+    setSystemAuthVerified(false);
+    setSystemAuthError("Generate or paste a key, then click Verify.");
+  }, [lastCreatedKey]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -193,6 +210,11 @@ function App() {
         await refreshAll();
         pushToast("info", "Job re-queued");
       },
+      deleteJob: async (id: string) => {
+        await api.deleteJob(id);
+        await refreshAll();
+        pushToast("success", "Job deleted");
+      },
     }),
     [pushToast, refreshAll],
   );
@@ -235,6 +257,12 @@ function App() {
                 <h2>{API_BASE_URL}</h2>
               </div>
               <div className="action-row">
+                <button className="ghost-button" type="button" onClick={() => setSystemAuthOpen(true)}>
+                  System Auth
+                </button>
+                <span className={`status-pill ${systemAuthVerified ? "ok" : "warn"}`}>
+                  {systemAuthVerified ? "System Auth verified" : "System Auth not verified"}
+                </span>
                 <button className="ghost-button" type="button" onClick={() => void refreshAll()}>
                   {loading ? "Loading..." : "Refresh all"}
                 </button>
@@ -288,16 +316,120 @@ function App() {
               <SettingsPage settings={settings} onSave={actions.updateSettings} />
             ) : null}
             {activeTab === "jobs" ? (
-          <JobsPage
-            jobs={jobs}
-            meta={meta}
-            profiles={profiles}
-            onCreate={actions.createJob}
-            onRetry={actions.retryJob}
-            onUploadAsset={actions.uploadProfileAsset}
-          />
-        ) : null}
+              <JobsPage
+                jobs={jobs}
+                meta={meta}
+                profiles={profiles}
+                onCreate={actions.createJob}
+                onRetry={actions.retryJob}
+                onDelete={actions.deleteJob}
+                onUploadAsset={actions.uploadProfileAsset}
+                systemAuthVerified={systemAuthVerified}
+                onOpenSystemAuth={() => setSystemAuthOpen(true)}
+              />
+            ) : null}
           </main>
+          {systemAuthOpen ? (
+            <div className="modal-backdrop system-auth-backdrop">
+              <div className="system-auth-modal">
+                <div className="system-auth-header">
+                  <div>
+                    <p className="eyebrow">System Auth</p>
+                    <h3>Verify Gateway API Key</h3>
+                  </div>
+                  <button className="ghost-button" type="button" onClick={() => setSystemAuthOpen(false)}>
+                    Close
+                  </button>
+                </div>
+                <div className="form-grid">
+                  <label className="wide">
+                    <span>API Base URL</span>
+                    <input value={API_BASE_URL} readOnly />
+                  </label>
+                  <label className="wide">
+                    <span>Key name / identifier</span>
+                    <input
+                      value={systemAuthName}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSystemAuthName(value);
+                        window.localStorage.setItem(SYSTEM_AUTH_NAME, value);
+                      }}
+                    />
+                  </label>
+                  <label className="wide">
+                    <span>Gateway API Key</span>
+                    <input
+                      placeholder="Paste your Gateway API key"
+                      value={systemAuthKey}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSystemAuthKey(value);
+                        window.localStorage.setItem(SYSTEM_AUTH_KEY, value);
+                        setSystemAuthVerified(false);
+                        setSystemAuthError("");
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className={`system-auth-alert ${systemAuthVerified ? "ok" : "warn"}`}>
+                  {systemAuthVerified
+                    ? "System Auth verified. Playground is unlocked."
+                    : systemAuthError || "Generate or paste a key, then click Verify."}
+                </div>
+                <div className="action-row">
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={async () => {
+                      setSystemAuthError("");
+                      setSystemAuthBusy(true);
+                      try {
+                        const suffix = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+                        const generatedName = `${systemAuthName || "Studio Key"} ${suffix}`;
+                        await actions.createApiKey({
+                          name: generatedName,
+                          rate_limit_per_minute: 60,
+                          allowed_categories: ["grok", "flow", "dreamina"],
+                          notes: "System Auth key",
+                        });
+                        setSystemAuthName(generatedName);
+                        window.localStorage.setItem(SYSTEM_AUTH_NAME, generatedName);
+                      } catch (error) {
+                        setSystemAuthError(error instanceof Error ? error.message : "Unable to generate key");
+                      } finally {
+                        setSystemAuthBusy(false);
+                      }
+                    }}
+                  >
+                    Generate Key
+                  </button>
+                  <button
+                    className="action-button"
+                    type="button"
+                    disabled={!systemAuthKey || systemAuthBusy}
+                    onClick={async () => {
+                      setSystemAuthBusy(true);
+                      setSystemAuthError("");
+                      try {
+                        await api.verifyClientKey(systemAuthKey);
+                        setSystemAuthVerified(true);
+                        window.localStorage.setItem(SYSTEM_AUTH_KEY, systemAuthKey);
+                        window.localStorage.setItem(SYSTEM_AUTH_NAME, systemAuthName);
+                      } catch {
+                        setSystemAuthVerified(false);
+                        setSystemAuthError("Invalid or expired API Key");
+                      } finally {
+                        setSystemAuthBusy(false);
+                      }
+                    }}
+                  >
+                    {systemAuthBusy ? "Verifying..." : "Verify"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </>
