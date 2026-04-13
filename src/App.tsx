@@ -4,6 +4,7 @@ import { api, getAdminToken, setAdminToken } from "./api/client";
 import { Sidebar, type TabKey } from "./components/Sidebar";
 import { ToastBar } from "./components/ToastBar";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
+import { ApiDocsPage } from "./pages/ApiDocsPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -26,9 +27,24 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const SYSTEM_AUTH_KEY = "gateway_system_api_key";
 const SYSTEM_AUTH_NAME = "gateway_system_api_key_name";
+const TAB_PATHS: Record<TabKey, string> = {
+  overview: "/dashboard",
+  profiles: "/profiles",
+  proxies: "/network",
+  keys: "/keys",
+  settings: "/settings",
+  jobs: "/jobs",
+  "api-docs": "/api-docs",
+};
+
+function tabFromPathname(pathname: string): TabKey {
+  const normalized = pathname.replace(/\/+$/, "") || "/";
+  const found = (Object.entries(TAB_PATHS) as Array<[TabKey, string]>).find(([, path]) => path === normalized);
+  return found?.[0] ?? "overview";
+}
 
 function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const [activeTab, setActiveTab] = useState<TabKey>(() => tabFromPathname(window.location.pathname));
   const [meta, setMeta] = useState<MetaRecord | null>(null);
   const [overview, setOverview] = useState<OverviewRecord | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -120,6 +136,22 @@ function App() {
     setSystemAuthVerified(false);
     setSystemAuthError("Generate or paste a key, then click Verify.");
   }, [lastCreatedKey]);
+
+  const navigateToTab = useCallback((tab: TabKey) => {
+    setActiveTab(tab);
+    const nextPath = TAB_PATHS[tab];
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({ tab }, "", nextPath);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(tabFromPathname(window.location.pathname));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -219,6 +251,38 @@ function App() {
     [pushToast, refreshAll],
   );
 
+  const verifySystemKey = useCallback(
+    async (key: string, name?: string) => {
+      setSystemAuthBusy(true);
+      setSystemAuthError("");
+      try {
+        await api.verifyClientKey(key);
+        setSystemAuthKey(key);
+        if (name) {
+          setSystemAuthName(name);
+          window.localStorage.setItem(SYSTEM_AUTH_NAME, name);
+        }
+        setSystemAuthVerified(true);
+        window.localStorage.setItem(SYSTEM_AUTH_KEY, key);
+        pushToast("success", "System Auth verified");
+      } catch (error) {
+        setSystemAuthVerified(false);
+        setSystemAuthError("Invalid or expired API Key");
+        pushToast("error", error instanceof Error ? error.message : "Unable to verify API key");
+      } finally {
+        setSystemAuthBusy(false);
+      }
+    },
+    [pushToast],
+  );
+
+  useEffect(() => {
+    if (!isAuthenticated || !systemAuthKey || systemAuthVerified || systemAuthBusy) {
+      return;
+    }
+    void verifySystemKey(systemAuthKey, systemAuthName);
+  }, [isAuthenticated, systemAuthBusy, systemAuthKey, systemAuthName, systemAuthVerified, verifySystemKey]);
+
   return (
     <>
       <ToastBar toast={toast} />
@@ -249,39 +313,30 @@ function App() {
         />
       ) : (
         <div className="app-shell">
-          <Sidebar activeTab={activeTab} onSelect={setActiveTab} />
+          <Sidebar
+            activeTab={activeTab}
+            onSelect={navigateToTab}
+            username={bootstrapUser?.username ?? "admin"}
+            onSignOut={() => {
+              setAdminToken(null);
+              setIsAuthenticated(false);
+              pushToast("info", "Signed out");
+            }}
+          />
           <main className="content-shell">
-            <header className="topbar">
-              <div>
-                <p className="eyebrow">Backend</p>
-                <h2>{API_BASE_URL}</h2>
-              </div>
-              <div className="action-row">
-                <button className="ghost-button" type="button" onClick={() => setSystemAuthOpen(true)}>
-                  System Auth
-                </button>
-                <span className={`status-pill ${systemAuthVerified ? "ok" : "warn"}`}>
-                  {systemAuthVerified ? "System Auth verified" : "System Auth not verified"}
-                </span>
-                <button className="ghost-button" type="button" onClick={() => void refreshAll()}>
-                  {loading ? "Loading..." : "Refresh all"}
-                </button>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => {
-                    setAdminToken(null);
-                    setIsAuthenticated(false);
-                    pushToast("info", "Signed out");
-                  }}
-                >
-                  Sign out
-                </button>
-              </div>
-            </header>
-
             {activeTab === "overview" ? (
-              <OverviewPage meta={meta} overview={overview} onRefresh={refreshAll} />
+              <OverviewPage
+                meta={meta}
+                overview={overview}
+                onRefresh={refreshAll}
+                apiKeys={apiKeys}
+                lastCreatedKey={lastCreatedKey}
+                onCreateApiKey={actions.createApiKey}
+                onToggleApiKey={actions.updateApiKey}
+                systemAuthVerified={systemAuthVerified}
+                systemAuthBusy={systemAuthBusy}
+                onVerifyCreatedKey={(keyName) => void verifySystemKey(lastCreatedKey ?? "", keyName)}
+              />
             ) : null}
             {activeTab === "profiles" ? (
               <ProfilesPage
@@ -325,9 +380,13 @@ function App() {
                 onDelete={actions.deleteJob}
                 onUploadAsset={actions.uploadProfileAsset}
                 systemAuthVerified={systemAuthVerified}
-                onOpenSystemAuth={() => setSystemAuthOpen(true)}
+                hasSystemAuthKey={Boolean(systemAuthKey)}
+                systemAuthBusy={systemAuthBusy}
+                onVerifySystemAuth={() => void verifySystemKey(systemAuthKey, systemAuthName)}
+                onGoToKeys={() => navigateToTab("keys")}
               />
             ) : null}
+            {activeTab === "api-docs" ? <ApiDocsPage /> : null}
           </main>
           {systemAuthOpen ? (
             <div className="modal-backdrop system-auth-backdrop">

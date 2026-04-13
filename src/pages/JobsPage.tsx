@@ -118,7 +118,10 @@ export function JobsPage({
   onDelete,
   onUploadAsset,
   systemAuthVerified,
-  onOpenSystemAuth,
+  hasSystemAuthKey,
+  systemAuthBusy,
+  onVerifySystemAuth,
+  onGoToKeys,
 }: {
   meta: MetaRecord | null;
   profiles: Profile[];
@@ -128,7 +131,10 @@ export function JobsPage({
   onDelete: (id: string) => Promise<void>;
   onUploadAsset: (profileId: string, file: File) => Promise<ProfileAssetRecord>;
   systemAuthVerified: boolean;
-  onOpenSystemAuth: () => void;
+  hasSystemAuthKey: boolean;
+  systemAuthBusy: boolean;
+  onVerifySystemAuth: () => void;
+  onGoToKeys: () => void;
 }) {
   const [profileId, setProfileId] = useState("");
   const [target, setTarget] = useState<JobTarget>("image");
@@ -137,6 +143,8 @@ export function JobsPage({
   const [count, setCount] = useState(1);
   const [videoMode, setVideoMode] = useState<"text_to_video" | "image_to_video">("text_to_video");
   const [aspectRatio, setAspectRatio] = useState("1:1");
+  const [quality, setQuality] = useState("high");
+  const [duration, setDuration] = useState(5);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceAssetPath, setSourceAssetPath] = useState("");
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState("");
@@ -162,6 +170,8 @@ export function JobsPage({
   useEffect(() => {
     setVideoMode("text_to_video");
     setAspectRatio("1:1");
+    setQuality("high");
+    setDuration(5);
     setSourceFile(null);
     setSourceAssetPath("");
     setSourcePreviewUrl("");
@@ -219,27 +229,34 @@ export function JobsPage({
   const activeReviewPreviewSource = getFirstAvailablePreview([activeReviewMedia, reviewDebugScreenshot], failedPreviews);
   const activeReviewPreviewUrl = activeReviewPreviewSource ? toBackendStorageUrl(activeReviewPreviewSource) : null;
 
-  if (!systemAuthVerified) {
-    return (
-      <div className="page system-auth-locked">
-        <div className="system-auth-overlay">
-          <div className="system-auth-card">
-            <p className="eyebrow">System Auth Required</p>
-            <h3>Playground is locked</h3>
-            <p className="muted">
-              Verify a Gateway API Key before running execute, async submit, or request-status checks from the Playground.
-            </p>
-            <button className="action-button" type="button" onClick={onOpenSystemAuth}>
-              Open System Auth
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="page">
+      {!systemAuthVerified ? (
+        <section className="page-band">
+          <div className="page-heading">
+            <div>
+              <p className="eyebrow">Queue</p>
+              <h2>Background Tasks Queue</h2>
+            </div>
+            {hasSystemAuthKey ? (
+              <button className="ghost-button" type="button" disabled={systemAuthBusy} onClick={onVerifySystemAuth}>
+                {systemAuthBusy ? "Verifying..." : "Verify Current Key"}
+              </button>
+            ) : (
+              <button className="ghost-button" type="button" onClick={onGoToKeys}>
+                Go to API Keys
+              </button>
+            )}
+          </div>
+          <div className="jobs-empty-auth">
+            {hasSystemAuthKey
+              ? "Current key has not been verified in this session yet. Verify it once to unlock job tracking."
+              : "No API Key found. Please create and apply an API Key first to track your jobs."}
+          </div>
+        </section>
+      ) : null}
+      {systemAuthVerified ? (
+        <>
       <section className="page-band">
         <div className="page-heading">
           <div>
@@ -297,6 +314,28 @@ export function JobsPage({
               </select>
             </label>
           ) : null}
+          {selectedProfile?.category === "grok" ? (
+            <label>
+              <span>Quality</span>
+              <select value={quality} onChange={(event) => setQuality(event.target.value)}>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </label>
+          ) : null}
+          {isGrokVideo ? (
+            <label>
+              <span>Duration</span>
+              <input
+                min={1}
+                max={10}
+                type="number"
+                value={duration}
+                onChange={(event) => setDuration(Number(event.target.value))}
+              />
+            </label>
+          ) : null}
           <label className="wide">
             <span>Prompt</span>
             <textarea rows={4} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
@@ -345,10 +384,15 @@ export function JobsPage({
                       video_mode: videoMode,
                       source_asset_path: videoMode === "image_to_video" ? sourceAssetPath || null : null,
                       aspect_ratio: aspectRatio,
+                      ratio: aspectRatio,
+                      quality,
+                      duration,
                     }
                   : {
                       source_asset_path: isGrokImage ? sourceAssetPath || null : null,
                       aspect_ratio: selectedProfile?.category === "grok" ? aspectRatio : undefined,
+                      ratio: selectedProfile?.category === "grok" ? aspectRatio : undefined,
+                      quality: selectedProfile?.category === "grok" ? quality : undefined,
                     },
               });
               setPrompt("");
@@ -540,6 +584,8 @@ export function JobsPage({
           </div>
         </div>
       </section>
+        </>
+      ) : null}
 
       {reviewJob ? (
         <div className="modal-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && setReviewJob(null)}>
