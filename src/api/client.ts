@@ -143,7 +143,8 @@ export function toBackendStorageUrl(value: string): string {
   }
   const normalized = value.replace(/\\/g, "/").replace(/^\.?\//, "");
   if (normalized.startsWith("storage/")) {
-    return `${API_ORIGIN}/${normalized}`;
+    const origin = API_ORIGIN || window.location.origin;
+    return `${origin}/${normalized}`;
   }
   return value;
 }
