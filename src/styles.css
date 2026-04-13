@@ -912,6 +912,7 @@ img {
 
 .system-auth-locked {
   position: relative;
+  overflow: hidden;
 }
 
 .system-auth-overlay {
@@ -921,8 +922,7 @@ img {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(226, 232, 240, 0.8);
-  backdrop-filter: blur(6px);
+  background: #eef3f8;
 }
 
 .system-auth-card {
