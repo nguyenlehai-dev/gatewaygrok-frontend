@@ -217,9 +217,9 @@ export function JobsPage({
   const activeReviewPreviewSource = getFirstAvailablePreview([activeReviewMedia, reviewDebugScreenshot], failedPreviews);
   const activeReviewPreviewUrl = activeReviewPreviewSource ? toBackendStorageUrl(activeReviewPreviewSource) : null;
 
-  return (
-    <div className={`page ${systemAuthVerified ? "" : "system-auth-locked"}`}>
-      {!systemAuthVerified ? (
+  if (!systemAuthVerified) {
+    return (
+      <div className="page system-auth-locked">
         <div className="system-auth-overlay">
           <div className="system-auth-card">
             <p className="eyebrow">System Auth Required</p>
@@ -232,7 +232,12 @@ export function JobsPage({
             </button>
           </div>
         </div>
-      ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="page">
       <section className="page-band">
         <div className="page-heading">
           <div>
