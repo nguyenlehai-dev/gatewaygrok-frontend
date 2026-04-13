@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { formatDate, parseTags } from "../lib/format";
 import { providerVisuals } from "../lib/providers";
@@ -83,13 +83,47 @@ export function ProfilesPage({
   const [form, setForm] = useState<ProfileFormState>(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cookieUploads, setCookieUploads] = useState<Record<string, File | null>>({});
-  const [sessionChecks, setSessionChecks] = useState<Record<string, SessionCheckRecord>>({});
+  const [sessionChecks, setSessionChecks] = useState<Record<string, SessionCheckRecord>>(() => {
+    if (typeof window === "undefined") {
+      return {};
+    }
+    try {
+      const stored = window.localStorage.getItem("gatewaygrok.sessionChecks");
+      return stored ? (JSON.parse(stored) as Record<string, SessionCheckRecord>) : {};
+    } catch {
+      return {};
+    }
+  });
   const [checkingId, setCheckingId] = useState<string | null>(null);
 
   const sortedProfiles = useMemo(
     () => [...profiles].sort((a, b) => a.name.localeCompare(b.name)),
     [profiles],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.localStorage.setItem("gatewaygrok.sessionChecks", JSON.stringify(sessionChecks));
+    } catch {
+      // ignore storage failures
+    }
+  }, [sessionChecks]);
+
+  useEffect(() => {
+    const profileIds = new Set(profiles.map((profile) => profile.id));
+    setSessionChecks((current) => {
+      const next: Record<string, SessionCheckRecord> = {};
+      for (const [key, value] of Object.entries(current)) {
+        if (profileIds.has(key)) {
+          next[key] = value;
+        }
+      }
+      return next;
+    });
+  }, [profiles]);
 
   const startEdit = (profile: Profile) => {
     setEditingId(profile.id);
