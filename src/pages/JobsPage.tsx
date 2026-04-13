@@ -130,6 +130,7 @@ export function JobsPage({
   const [negativePrompt, setNegativePrompt] = useState("");
   const [count, setCount] = useState(1);
   const [videoMode, setVideoMode] = useState<"text_to_video" | "image_to_video">("text_to_video");
+  const [aspectRatio, setAspectRatio] = useState("1:1");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceAssetPath, setSourceAssetPath] = useState("");
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState("");
@@ -153,6 +154,7 @@ export function JobsPage({
 
   useEffect(() => {
     setVideoMode("text_to_video");
+    setAspectRatio("1:1");
     setSourceFile(null);
     setSourceAssetPath("");
     setSourcePreviewUrl("");
@@ -257,6 +259,18 @@ export function JobsPage({
               </select>
             </label>
           ) : null}
+          {selectedProfile?.category === "grok" ? (
+            <label>
+              <span>Aspect ratio</span>
+              <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
+                <option value="1:1">1:1</option>
+                <option value="2:3">2:3</option>
+                <option value="3:2">3:2</option>
+                <option value="9:16">9:16</option>
+                <option value="16:9">16:9</option>
+              </select>
+            </label>
+          ) : null}
           <label className="wide">
             <span>Prompt</span>
             <textarea rows={4} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
@@ -304,9 +318,11 @@ export function JobsPage({
                   ? {
                       video_mode: videoMode,
                       source_asset_path: videoMode === "image_to_video" ? sourceAssetPath || null : null,
+                      aspect_ratio: aspectRatio,
                     }
                   : {
                       source_asset_path: isGrokImage ? sourceAssetPath || null : null,
+                      aspect_ratio: selectedProfile?.category === "grok" ? aspectRatio : undefined,
                     },
               });
               setPrompt("");
