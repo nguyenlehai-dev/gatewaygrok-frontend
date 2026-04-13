@@ -1,0 +1,11 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: ${FRONTEND_DOCKERFILE:-Dockerfile}
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: ${FRONTEND_CONTAINER_NAME:-gatewaygrok-frontend}
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    restart: unless-stopped

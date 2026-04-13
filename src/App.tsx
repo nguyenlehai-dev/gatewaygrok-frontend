@@ -23,6 +23,8 @@ import type {
   Toast,
 } from "./types";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [meta, setMeta] = useState<MetaRecord | null>(null);
@@ -230,7 +232,7 @@ function App() {
             <header className="topbar">
               <div>
                 <p className="eyebrow">Backend</p>
-                <h2>http://127.0.0.1:8001/api</h2>
+                <h2>{API_BASE_URL}</h2>
               </div>
               <div className="action-row">
                 <button className="ghost-button" type="button" onClick={() => void refreshAll()}>
