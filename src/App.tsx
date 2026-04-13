@@ -413,12 +413,16 @@ function App() {
                       setSystemAuthError("");
                       setSystemAuthBusy(true);
                       try {
+                        const suffix = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+                        const generatedName = `${systemAuthName || "Studio Key"} ${suffix}`;
                         await actions.createApiKey({
-                          name: systemAuthName || "Studio Key",
+                          name: generatedName,
                           rate_limit_per_minute: 60,
                           allowed_categories: ["grok", "flow", "dreamina"],
                           notes: "System Auth key",
                         });
+                        setSystemAuthName(generatedName);
+                        window.localStorage.setItem(SYSTEM_AUTH_NAME, generatedName);
                       } catch (error) {
                         setSystemAuthError(error instanceof Error ? error.message : "Unable to generate key");
                       } finally {
