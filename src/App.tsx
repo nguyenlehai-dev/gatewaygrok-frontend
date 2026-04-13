@@ -113,45 +113,12 @@ function App() {
   }, [isAuthenticated, refreshAll]);
 
   useEffect(() => {
-    if (!systemAuthKey) {
-      setSystemAuthVerified(false);
-      return;
-    }
-    let active = true;
-    setSystemAuthBusy(true);
-    setSystemAuthError("");
-    api
-      .verifyClientKey(systemAuthKey)
-      .then((response) => {
-        if (!active) {
-          return;
-        }
-        setSystemAuthVerified(true);
-        setSystemAuthError("");
-        setSystemAuthName((current) => response.name || current);
-      })
-      .catch(() => {
-        if (!active) {
-          return;
-        }
-        setSystemAuthVerified(false);
-        setSystemAuthError("API key is not verified");
-      })
-      .finally(() => {
-        if (active) {
-          setSystemAuthBusy(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [systemAuthKey]);
-
-  useEffect(() => {
     if (!lastCreatedKey) {
       return;
     }
     setSystemAuthKey(lastCreatedKey);
+    setSystemAuthVerified(false);
+    setSystemAuthError("Generate or paste a key, then click Verify.");
   }, [lastCreatedKey]);
 
   useEffect(() => {
@@ -242,6 +209,11 @@ function App() {
         await api.retryJob(id);
         await refreshAll();
         pushToast("info", "Job re-queued");
+      },
+      deleteJob: async (id: string) => {
+        await api.deleteJob(id);
+        await refreshAll();
+        pushToast("success", "Job deleted");
       },
     }),
     [pushToast, refreshAll],
@@ -350,6 +322,7 @@ function App() {
                 profiles={profiles}
                 onCreate={actions.createJob}
                 onRetry={actions.retryJob}
+                onDelete={actions.deleteJob}
                 onUploadAsset={actions.uploadProfileAsset}
                 systemAuthVerified={systemAuthVerified}
                 onOpenSystemAuth={() => setSystemAuthOpen(true)}
@@ -393,9 +366,8 @@ function App() {
                         const value = event.target.value;
                         setSystemAuthKey(value);
                         window.localStorage.setItem(SYSTEM_AUTH_KEY, value);
-                        if (!value) {
-                          setSystemAuthVerified(false);
-                        }
+                        setSystemAuthVerified(false);
+                        setSystemAuthError("");
                       }}
                     />
                   </label>

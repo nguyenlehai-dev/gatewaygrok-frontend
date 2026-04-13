@@ -115,6 +115,7 @@ export function JobsPage({
   jobs,
   onCreate,
   onRetry,
+  onDelete,
   onUploadAsset,
   systemAuthVerified,
   onOpenSystemAuth,
@@ -124,6 +125,7 @@ export function JobsPage({
   jobs: JobRecord[];
   onCreate: (payload: Record<string, unknown>) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   onUploadAsset: (profileId: string, file: File) => Promise<ProfileAssetRecord>;
   systemAuthVerified: boolean;
   onOpenSystemAuth: () => void;
@@ -491,6 +493,18 @@ export function JobsPage({
                         onClick={() => void onRetry(job.id)}
                       >
                         Retry
+                      </button>
+                      <button
+                        className="mini-button danger"
+                        type="button"
+                        disabled={job.status === "pending" || job.status === "running"}
+                        onClick={() => {
+                          if (window.confirm("Delete this job and its output files?")) {
+                            void onDelete(job.id);
+                          }
+                        }}
+                      >
+                        Delete
                       </button>
                     </div>
                   </div>

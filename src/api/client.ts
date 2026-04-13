@@ -120,6 +120,7 @@ export const api = {
   createJob: (body: Record<string, unknown>) =>
     request<JobRecord>("/jobs", { method: "POST", body: JSON.stringify(body) }),
   retryJob: (id: string) => request<JobRecord>(`/jobs/${id}/retry`, { method: "POST" }),
+  deleteJob: (id: string) => request<void>(`/jobs/${id}`, { method: "DELETE" }),
   verifyClientKey: (key: string) =>
     request<{ status: string; name: string; key_prefix: string }>(`/client/verify`, {
       headers: { "X-API-Key": key },
