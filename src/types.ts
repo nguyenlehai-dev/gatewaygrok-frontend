@@ -147,6 +147,30 @@ export type SessionCheckRecord = {
   screenshot_data_url?: string | null;
 };
 
+export type RuntimeLaunchRecord = {
+  launched: boolean;
+  profile_id: string;
+  provider: string;
+  debug_port: number;
+  debug_endpoint: string;
+  log_path: string;
+  display?: string | null;
+  message: string;
+};
+
+export type RuntimeStatusRecord = {
+  profile_id: string;
+  provider: string;
+  requires_live_browser: boolean;
+  running: boolean;
+  debug_port: number;
+  debug_endpoint: string;
+  debug_port_open: boolean;
+  browser_process_count: number;
+  log_path: string;
+  display?: string | null;
+};
+
 export type AuthBootstrap = {
   username: string;
 };

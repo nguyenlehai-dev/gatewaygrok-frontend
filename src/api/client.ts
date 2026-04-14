@@ -9,6 +9,8 @@ import type {
   Profile,
   ProfileAssetRecord,
   ProxyRecord,
+  RuntimeLaunchRecord,
+  RuntimeStatusRecord,
   SessionCheckRecord,
   SettingsRecord,
 } from "../types";
@@ -104,6 +106,23 @@ export const api = {
         method: "POST",
       },
     ),
+  launchRuntime: (profileId: string, display?: string) =>
+    request<RuntimeLaunchRecord>(`/profiles/${profileId}/launch-runtime`, {
+      method: "POST",
+      body: JSON.stringify({
+        display,
+        start_url: "https://grok.com/imagine",
+      }),
+    }),
+  runtimeStatus: (profileId: string) => request<RuntimeStatusRecord>(`/profiles/${profileId}/runtime-status`),
+  stopRuntime: (profileId: string, display?: string) =>
+    request<{ stopped: boolean; profile_id: string; provider: string; message: string }>(
+      `/profiles/${profileId}/stop-runtime`,
+      {
+        method: "POST",
+        body: JSON.stringify({ display }),
+      },
+    ),
   getProxies: () => request<ProxyRecord[]>("/proxies"),
   createProxy: (body: Record<string, unknown>) =>
     request<ProxyRecord>("/proxies", { method: "POST", body: JSON.stringify(body) }),
@@ -147,7 +166,7 @@ export function toBackendStorageUrl(value: string): string {
     return value;
   }
   const normalized = value.replace(/\\/g, "/").replace(/^\.?\//, "");
-  if (normalized.startsWith("storage/")) {
+  if (normalized.startsWith("storage/") || normalized.startsWith("storage-test/")) {
     return `${API_ORIGIN}/${normalized}`;
   }
   return value;

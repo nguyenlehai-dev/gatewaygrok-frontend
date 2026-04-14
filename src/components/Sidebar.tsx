@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 type TabKey = "overview" | "profiles" | "proxies" | "keys" | "settings" | "jobs" | "api-docs";
 
 function HeaderIcon({ path }: { path: string }) {
@@ -29,8 +31,61 @@ export function Sidebar({
   username: string;
   onSignOut: () => void;
 }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
   return (
     <aside className="sidebar">
+      <div className="mobile-topbar">
+        <button
+          className="mobile-nav-toggle"
+          type="button"
+          onClick={() => setMobileOpen((value) => !value)}
+          aria-label="Toggle navigation"
+        >
+          <HeaderIcon path="M4 6h16M4 12h16M4 18h16" />
+        </button>
+        <div className="mobile-brand">
+          <div className="brand-mark" aria-hidden="true">
+            <HeaderIcon path="M5 7.5a2.5 2.5 0 0 1 2.5-2.5h5A2.5 2.5 0 0 1 15 7.5v9A2.5 2.5 0 0 1 12.5 19h-5A2.5 2.5 0 0 1 5 16.5zM15 9l4-2v10l-4-2" />
+          </div>
+          <span>PlenxEditor</span>
+        </div>
+        <div className="mobile-user">
+          <span>{username}</span>
+          <button className="header-logout" type="button" onClick={onSignOut} aria-label="Sign out">
+            <HeaderIcon path="M15 8l5 4-5 4M20 12H9M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5" />
+          </button>
+        </div>
+      </div>
+      <div className={`mobile-drawer ${mobileOpen ? "open" : ""}`} aria-hidden={!mobileOpen}>
+        <div className="mobile-drawer-backdrop" onClick={() => setMobileOpen(false)} />
+        <div className="mobile-drawer-panel">
+          <div className="mobile-drawer-header">
+            <div className="brand-mark" aria-hidden="true">
+              <HeaderIcon path="M5 7.5a2.5 2.5 0 0 1 2.5-2.5h5A2.5 2.5 0 0 1 15 7.5v9A2.5 2.5 0 0 1 12.5 19h-5A2.5 2.5 0 0 1 5 16.5zM15 9l4-2v10l-4-2" />
+            </div>
+            <span>PlenxEditor</span>
+            <button className="mobile-drawer-close" type="button" onClick={() => setMobileOpen(false)}>
+              <HeaderIcon path="M6 6l12 12M18 6l-12 12" />
+            </button>
+          </div>
+          <nav className="mobile-drawer-nav">
+            {items.map((item) => (
+              <button
+                key={item.key}
+                className={`mobile-drawer-item ${activeTab === item.key ? "active" : ""}`}
+                onClick={() => {
+                  onSelect(item.key);
+                  setMobileOpen(false);
+                }}
+                type="button"
+              >
+                <HeaderIcon path={item.icon} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
       <div className="brand-block">
         <div className="brand-mark" aria-hidden="true">
           <HeaderIcon path="M5 7.5a2.5 2.5 0 0 1 2.5-2.5h5A2.5 2.5 0 0 1 15 7.5v9A2.5 2.5 0 0 1 12.5 19h-5A2.5 2.5 0 0 1 5 16.5zM15 9l4-2v10l-4-2" />

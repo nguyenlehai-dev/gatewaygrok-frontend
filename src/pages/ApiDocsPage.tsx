@@ -23,10 +23,10 @@ type InfoCard = {
 };
 
 const generateFields: FieldRow[] = [
-  { name: "profile_id", type: "string", required: "yes", description: "Profile Grok da duoc login va san sang cho automation." },
+  { name: "profile_id", type: "string", required: "no", description: "Profile Grok da duoc login va san sang cho automation. Neu bo trong, backend se tu chon profile phu hop." },
   { name: "target", type: "image | video", required: "yes", description: "Chon output anh hoac video." },
   { name: "prompt", type: "string", required: "yes", description: "Prompt chinh gui sang Grok." },
-  { name: "reference_images", type: "string[]", required: "no", description: "Path anh tham chieu da upload truoc do. Item dau tien se duoc map thanh source_asset_path." },
+  { name: "reference_images", type: "string[]", required: "no", description: "Co the la storage path hoac URL anh. Item dau tien se duoc map thanh source_asset_path." },
   { name: "ratio", type: "string", required: "no", description: "Vi du 1:1, 16:9, 9:16. Backend nhan va forward xuong provider payload." },
   { name: "quality", type: "string", required: "no", description: "Vi du low, medium, high. Backend nhan va forward xuong provider payload." },
   { name: "duration", type: "number", required: "no", description: "Thoi luong mong muon cho video. Backend nhan va forward xuong provider payload." },
@@ -35,17 +35,16 @@ const generateFields: FieldRow[] = [
 ];
 
 const taskFields: FieldRow[] = [
-  { name: "task_id", type: "string", required: "yes", description: "ID de client polling." },
+  { name: "id", type: "string", required: "yes", description: "ID task (su dung khi poll full response)." },
   { name: "status", type: "pending | running | succeeded | failed", required: "yes", description: "Trang thai moi nhat cua task." },
-  { name: "poll_url", type: "string", required: "yes", description: "Duong dan polling tuong ung." },
   { name: "profile_id", type: "string", required: "yes", description: "Profile da duoc dung de submit task." },
   { name: "target", type: "image | video", required: "yes", description: "Loai output hien tai." },
   { name: "prompt", type: "string", required: "yes", description: "Prompt goc da submit." },
   { name: "negative_prompt", type: "string | null", required: "no", description: "Gia tri negative prompt neu co." },
   { name: "count", type: "number", required: "yes", description: "So output duoc yeu cau." },
   { name: "provider_payload", type: "object | null", required: "no", description: "Payload da map xuong provider, bao gom video_mode, source_asset_path va cac tuy chon bo sung." },
-  { name: "result", type: "object | null", required: "no", description: "Ket qua khi task thanh cong. Thuong chua media_urls va thong tin debug." },
-  { name: "error", type: "string | null", required: "no", description: "Ly do fail neu co." },
+  { name: "result_payload", type: "object | null", required: "no", description: "Ket qua khi task thanh cong. Thuong chua media_urls va thong tin debug." },
+  { name: "error_message", type: "string | null", required: "no", description: "Ly do fail neu co." },
 ];
 
 const assetFields: FieldRow[] = [
@@ -65,9 +64,9 @@ const quickstartCards: InfoCard[] = [
     rows: [
       "1. Admin tao profile Grok va dang nhap thanh cong.",
       "2. Admin tao x-api-key cho he thong ngoai.",
-      "3. Neu can image to video, upload anh reference truoc.",
+      "3. Neu can image to video, upload anh reference hoac gui URL anh.",
       "4. Client goi POST /api/client/generate de lay task_id.",
-      "5. Client poll GET /api/client/tasks/{task_id} cho toi khi succeeded hoac failed.",
+      "5. Client poll GET /api/client/tasks/{task_id}/status (lite) hoac /tasks/{task_id} (full).",
     ],
   },
   {
@@ -78,6 +77,7 @@ const quickstartCards: InfoCard[] = [
       "target=video, khong co reference_images -> video_mode=text_to_video.",
       "target=video, co reference_images -> video_mode=image_to_video.",
       "ratio, quality, duration duoc nhan o top-level va dua vao provider_payload.",
+      "reference_images co the la URL, backend se auto-download ve asset.",
     ],
   },
   {
@@ -85,8 +85,8 @@ const quickstartCards: InfoCard[] = [
     rows: [
       "pending: task vua duoc tao va cho worker nhan.",
       "running: worker dang xu ly voi browser/session Grok.",
-      "succeeded: da co result.media_urls.",
-      "failed: task dung va co error.",
+      "succeeded: da co result_payload.media_urls.",
+      "failed: task dung va co error_message.",
       "401: thieu hoac sai x-api-key.",
       "409: profile session chua san sang cho automation.",
     ],
@@ -109,7 +109,7 @@ const endpoints: EndpointCard[] = [
     "target": "video",
     "prompt": "A cinematic shot of clouds moving fast over mountains",
     "reference_images": [
-      "storage/profiles/PROFILE_ID/assets/ref-mountains.png"
+      "https://images.example.com/ref-mountains.png"
     ],
     "ratio": "16:9",
     "quality": "high",
@@ -119,12 +119,15 @@ const endpoints: EndpointCard[] = [
     responseExample: `{
   "task_id": "42d72140-8613-4a53-a1df-1af4db95f4df",
   "status": "pending",
-  "poll_url": "/api/client/tasks/42d72140-8613-4a53-a1df-1af4db95f4df"
+  "success": false,
+  "message": "pending",
+  "url": null
 }`,
     notes: [
       "Task se vao queue ngay sau khi tao.",
       "Backend tu map video_mode dua tren reference_images.",
       "Neu reference_images co nhieu item, item dau tien hien duoc dung lam source_asset_path.",
+      "reference_images co the la URL, backend se auto-download ve storage.",
     ],
   },
   {
@@ -172,9 +175,8 @@ const endpoints: EndpointCard[] = [
     requestExample: `curl "/api/client/tasks/42d72140-8613-4a53-a1df-1af4db95f4df" \\
   -H "x-api-key: gg_your_key"`,
     responseExample: `{
-  "task_id": "42d72140-8613-4a53-a1df-1af4db95f4df",
+  "id": "42d72140-8613-4a53-a1df-1af4db95f4df",
   "status": "succeeded",
-  "poll_url": "/api/client/tasks/42d72140-8613-4a53-a1df-1af4db95f4df",
   "profile_id": "PROFILE_ID",
   "target": "image",
   "prompt": "A cinematic portrait",
@@ -184,18 +186,18 @@ const endpoints: EndpointCard[] = [
     "ratio": "1:1",
     "quality": "high"
   },
-  "result": {
+  "result_payload": {
     "target": "image",
     "media_urls": [
-      "storage/profiles/PROFILE_ID/output/42d72140-8613-4a53-a1df-1af4db95f4df-image-1.jpg"
+      "https://flowgrok.plxeditor.com/storage/profiles/PROFILE_ID/output/42d72140-8613-4a53-a1df-1af4db95f4df-image-1.jpg"
     ],
     "provider": "grok",
     "page_url": "https://grok.com/imagine"
   },
-  "error": null
+  "error_message": null
 }`,
     notes: [
-      "Media URL tra ve la duong dan tuong doi; client co the ghep them host hien tai de tai file.",
+      "Media URL tra ve la duong dan day du, co the tai truc tiep.",
       "Task co the o running trong mot khoang thoi gian dai hon voi video jobs.",
     ],
   },
@@ -207,9 +209,8 @@ const endpoints: EndpointCard[] = [
     auth: "x-api-key",
     fields: taskFields,
     responseExample: `{
-  "task_id": "42d72140-8613-4a53-a1df-1af4db95f4df",
+  "id": "42d72140-8613-4a53-a1df-1af4db95f4df",
   "status": "running",
-  "poll_url": "/api/client/tasks/42d72140-8613-4a53-a1df-1af4db95f4df",
   "profile_id": "PROFILE_ID",
   "target": "video",
   "prompt": "Animate this portrait",
@@ -225,8 +226,8 @@ const endpoints: EndpointCard[] = [
     "quality": "high",
     "duration": 5
   },
-  "result": null,
-  "error": null
+  "result_payload": null,
+  "error_message": null
 }`,
   },
   {

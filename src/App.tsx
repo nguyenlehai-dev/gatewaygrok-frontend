@@ -201,6 +201,24 @@ function App() {
         const result = await api.launchLogin(profileId);
         pushToast("info", result.message);
       },
+      launchRuntime: async (profileId: string, display?: string) => {
+        const result = await api.launchRuntime(profileId, display);
+        pushToast("info", `${result.message} Debug: ${result.debug_endpoint}`);
+      },
+      runtimeStatus: async (profileId: string) => {
+        const result = await api.runtimeStatus(profileId);
+        pushToast(
+          result.running && result.debug_port_open ? "success" : "info",
+          result.running
+            ? `Runtime running on ${result.debug_endpoint}`
+            : "Runtime browser is not running for this profile",
+        );
+        return result;
+      },
+      stopRuntime: async (profileId: string, display?: string) => {
+        const result = await api.stopRuntime(profileId, display);
+        pushToast("info", result.message);
+      },
       createProxy: async (payload: Record<string, unknown>) => {
         await api.createProxy(payload);
         await refreshAll();
@@ -349,6 +367,9 @@ function App() {
                 onImportCookies={actions.importCookies}
                 onSessionCheck={actions.sessionCheck}
                 onLaunchLogin={actions.launchLogin}
+                onLaunchRuntime={actions.launchRuntime}
+                onRuntimeStatus={actions.runtimeStatus}
+                onStopRuntime={actions.stopRuntime}
               />
             ) : null}
             {activeTab === "proxies" ? (

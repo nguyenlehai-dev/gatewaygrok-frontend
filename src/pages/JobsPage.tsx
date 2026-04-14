@@ -109,6 +109,46 @@ function getFirstAvailablePreview(
   return null;
 }
 
+function getElapsedMs(since: string, nowMs: number): number {
+  const parsed = Date.parse(since);
+  if (Number.isNaN(parsed)) {
+    return 0;
+  }
+  return Math.max(0, nowMs - parsed);
+}
+
+function getEstimatedJobDurationMs(job: JobRecord): number {
+  const providerPayload = job.provider_payload ?? {};
+  const quality = typeof providerPayload.quality === "string" ? providerPayload.quality : "high";
+  const duration = typeof providerPayload.duration === "number" ? providerPayload.duration : 5;
+  const videoMode =
+    typeof providerPayload.video_mode === "string" ? providerPayload.video_mode : "text_to_video";
+
+  if (job.target === "video") {
+    const base = videoMode === "image_to_video" ? 180_000 : 220_000;
+    const qualityBoost = quality === "low" ? -20_000 : quality === "medium" ? 0 : 35_000;
+    return Math.max(90_000, base + duration * 12_000 + qualityBoost);
+  }
+
+  const base = 75_000;
+  const qualityBoost = quality === "low" ? -15_000 : quality === "medium" ? 10_000 : 28_000;
+  return Math.max(35_000, base + qualityBoost);
+}
+
+function getJobProgress(job: JobRecord, nowMs: number): number {
+  if (job.status === "succeeded" || job.status === "failed") {
+    return 100;
+  }
+  if (job.status === "pending") {
+    return 8;
+  }
+
+  const elapsedMs = getElapsedMs(job.created_at, nowMs);
+  const estimatedDurationMs = getEstimatedJobDurationMs(job);
+  const raw = Math.round((elapsedMs / estimatedDurationMs) * 100);
+  return Math.min(96, Math.max(12, raw));
+}
+
 export function JobsPage({
   meta,
   profiles,
@@ -152,6 +192,7 @@ export function JobsPage({
   const [reviewJob, setReviewJob] = useState<JobRecord | null>(null);
   const [reviewMediaIndex, setReviewMediaIndex] = useState(0);
   const [page, setPage] = useState(1);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const selectedProfile = profiles.find((profile) => profile.id === profileId);
   const isGrokImage = selectedProfile?.category === "grok" && target === "image";
   const isGrokVideo = selectedProfile?.category === "grok" && target === "video";
@@ -205,6 +246,18 @@ export function JobsPage({
   useEffect(() => {
     setReviewMediaIndex(0);
   }, [reviewJob?.id]);
+
+  useEffect(() => {
+    if (!jobs.some((job) => job.status === "running")) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1500);
+
+    return () => window.clearInterval(timer);
+  }, [jobs]);
 
   useEffect(() => {
     if (!sourceFile) {
@@ -450,6 +503,7 @@ export function JobsPage({
           {pagedJobs.map((job) => {
             const profile = profiles.find((item) => item.id === job.profile_id);
             const resultSummary = getResultSummary(job);
+            const progress = getJobProgress(job, nowMs);
             const firstMedia = getFirstMedia(job);
             const debugScreenshot = getDebugScreenshot(job);
             const sourceAsset = getSourceAsset(job);
@@ -478,6 +532,17 @@ export function JobsPage({
                     </div>
                   </div>
                   <span className={`status-pill status-${job.status}`}>{job.status}</span>
+                  {job.status === "running" ? (
+                    <div className="job-progress-block" aria-label={`Estimated progress ${progress}%`}>
+                      <div className="job-progress-head">
+                        <small>Estimated progress</small>
+                        <strong>{progress}%</strong>
+                      </div>
+                      <div className="job-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+                        <div className="job-progress-fill" style={{ width: `${progress}%` }} />
+                      </div>
+                    </div>
+                  ) : null}
                   <small>{formatDate(job.updated_at)}</small>
                   <code>{job.id}</code>
                 </div>
