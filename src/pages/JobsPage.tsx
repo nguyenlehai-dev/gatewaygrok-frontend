@@ -119,19 +119,31 @@ function getElapsedMs(since: string, nowMs: number): number {
 
 function getEstimatedJobDurationMs(job: JobRecord): number {
   const providerPayload = job.provider_payload ?? {};
-  const quality = typeof providerPayload.quality === "string" ? providerPayload.quality : "high";
+  const quality = typeof providerPayload.quality === "string" ? providerPayload.quality : "Standard";
   const duration = typeof providerPayload.duration === "number" ? providerPayload.duration : 5;
   const videoMode =
     typeof providerPayload.video_mode === "string" ? providerPayload.video_mode : "text_to_video";
 
   if (job.target === "video") {
     const base = videoMode === "image_to_video" ? 180_000 : 220_000;
-    const qualityBoost = quality === "low" ? -20_000 : quality === "medium" ? 0 : 35_000;
+    const normalizedQuality = quality.toLowerCase();
+    const qualityBoost =
+      normalizedQuality === "speed" || normalizedQuality === "low"
+        ? -20_000
+        : normalizedQuality === "standard" || normalizedQuality === "medium"
+          ? 0
+          : 35_000;
     return Math.max(90_000, base + duration * 12_000 + qualityBoost);
   }
 
   const base = 75_000;
-  const qualityBoost = quality === "low" ? -15_000 : quality === "medium" ? 10_000 : 28_000;
+  const normalizedQuality = quality.toLowerCase();
+  const qualityBoost =
+    normalizedQuality === "speed" || normalizedQuality === "low"
+      ? -15_000
+      : normalizedQuality === "standard" || normalizedQuality === "medium"
+        ? 10_000
+        : 28_000;
   return Math.max(35_000, base + qualityBoost);
 }
 
@@ -194,12 +206,11 @@ export function JobsPage({
   const [page, setPage] = useState(1);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const selectedProfile = profiles.find((profile) => profile.id === profileId);
-  const isGrokImage = selectedProfile?.category === "grok" && target === "image";
   const isGrokVideo = selectedProfile?.category === "grok" && target === "video";
   const submitDisabled =
     !profileId ||
     !systemAuthVerified ||
-    ((isGrokImage || (isGrokVideo && videoMode === "image_to_video")) ? !sourceAssetPath && !prompt.trim() : !prompt.trim());
+    ((isGrokVideo && videoMode === "image_to_video") ? !sourceAssetPath || !prompt.trim() : !prompt.trim());
   const reviewProfile = profiles.find((profile) => profile.id === reviewJob?.profile_id);
   const reviewMedia = getMediaUrls(reviewJob);
   const reviewDebugScreenshot = getDebugScreenshot(reviewJob);
@@ -211,7 +222,7 @@ export function JobsPage({
   useEffect(() => {
     setVideoMode("text_to_video");
     setAspectRatio("1:1");
-    setQuality("high");
+    setQuality("Standard");
     setDuration(5);
     setSourceFile(null);
     setSourceAssetPath("");
@@ -369,11 +380,20 @@ export function JobsPage({
           ) : null}
           {selectedProfile?.category === "grok" ? (
             <label>
-              <span>Quality</span>
+              <span>{isGrokVideo ? "Resolution / quality" : "Quality"}</span>
               <select value={quality} onChange={(event) => setQuality(event.target.value)}>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
+                {isGrokVideo ? (
+                  <>
+                    <option value="480p">480p</option>
+                    <option value="720p">720p</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Speed">Speed</option>
+                    <option value="Standard">Standard</option>
+                    <option value="Quality">Quality</option>
+                  </>
+                )}
               </select>
             </label>
           ) : null}
@@ -381,7 +401,7 @@ export function JobsPage({
             <label>
               <span>Duration</span>
               <input
-                min={1}
+                min={6}
                 max={10}
                 type="number"
                 value={duration}
@@ -393,7 +413,7 @@ export function JobsPage({
             <span>Prompt</span>
             <textarea rows={4} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
           </label>
-          {isGrokImage || (isGrokVideo && videoMode === "image_to_video") ? (
+          {isGrokVideo && videoMode === "image_to_video" ? (
             <label className="wide">
               <span>Source image</span>
               <input type="file" accept="image/*" onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)} />
@@ -405,7 +425,7 @@ export function JobsPage({
           </label>
         </div>
         <div className="action-row">
-          {isGrokImage || (isGrokVideo && videoMode === "image_to_video") ? (
+          {isGrokVideo && videoMode === "image_to_video" ? (
             <button
               className="ghost-button"
               type="button"
@@ -442,7 +462,6 @@ export function JobsPage({
                       duration,
                     }
                   : {
-                      source_asset_path: isGrokImage ? sourceAssetPath || null : null,
                       aspect_ratio: selectedProfile?.category === "grok" ? aspectRatio : undefined,
                       ratio: selectedProfile?.category === "grok" ? aspectRatio : undefined,
                       quality: selectedProfile?.category === "grok" ? quality : undefined,
@@ -461,11 +480,11 @@ export function JobsPage({
               ? `For ${selectedProfile.category}, run Launch login, pass session check, and keep that profile browser open before submitting jobs.`
               : "Gateway will reject jobs until the selected profile passes session check in Profiles."}
           </small>
-          {isGrokImage || (isGrokVideo && videoMode === "image_to_video") ? (
+          {isGrokVideo && videoMode === "image_to_video" ? (
             <small className="muted">{sourceAssetPath ? sourceAssetPath : "Upload a source image before submitting."}</small>
           ) : null}
         </div>
-        {isGrokImage || (isGrokVideo && videoMode === "image_to_video") ? (
+        {isGrokVideo && videoMode === "image_to_video" ? (
           <div className="source-preview-panel">
             <div className="stacked-cell">
               <strong>Source preview</strong>
