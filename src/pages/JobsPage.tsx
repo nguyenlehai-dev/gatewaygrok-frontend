@@ -482,22 +482,19 @@ export function JobsPage({
             <label>
               <span>Quality</span>
               <select value={quality} onChange={(event) => setQuality(event.target.value)}>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
+                <option value="low">low / 360p</option>
+                <option value="medium">medium / 480p</option>
+                <option value="high">high / 720p</option>
               </select>
             </label>
           ) : null}
           {isGrokVideo ? (
             <label>
               <span>Duration</span>
-              <input
-                min={1}
-                max={10}
-                type="number"
-                value={duration}
-                onChange={(event) => setDuration(Number(event.target.value))}
-              />
+              <select value={duration} onChange={(event) => setDuration(Number(event.target.value))}>
+                <option value={6}>6s</option>
+                <option value={10}>10s</option>
+              </select>
             </label>
           ) : null}
           <label className="wide">
