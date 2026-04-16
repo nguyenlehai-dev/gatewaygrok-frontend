@@ -1121,6 +1121,12 @@ img {
   background: rgba(255, 107, 107, 0.22);
 }
 
+.status-sensitive {
+  background: rgba(248, 113, 113, 0.24);
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  color: #fecaca;
+}
+
 .status-unknown {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -1424,51 +1430,18 @@ img {
   box-shadow: 0 12px 30px rgba(2, 6, 23, 0.28);
 }
 
+.job-card-sensitive-blocked {
+  border-color: rgba(248, 113, 113, 0.58);
+  background:
+    linear-gradient(180deg, rgba(127, 29, 29, 0.34), rgba(15, 23, 42, 0.94)),
+    rgba(15, 23, 42, 0.9);
+  box-shadow: 0 14px 34px rgba(127, 29, 29, 0.22);
+}
+
 .job-card-meta {
   display: grid;
   align-content: start;
   gap: 10px;
-}
-
-.job-progress-block {
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid rgba(99, 102, 241, 0.22);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.58);
-}
-
-.job-progress-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.job-progress-head small {
-  color: var(--text-secondary);
-}
-
-.job-progress-head strong {
-  font-size: 13px;
-  color: #a5b4fc;
-}
-
-.job-progress-track {
-  height: 10px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.16);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-}
-
-.job-progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #4f46e5, #22c55e);
-  box-shadow: 0 0 18px rgba(99, 102, 241, 0.28);
-  transition: width 0.9s ease;
 }
 
 .job-card-body {
@@ -1518,8 +1491,7 @@ img {
 }
 
 .job-preview-media {
-  object-fit: contain;
-  display: block;
+  object-fit: cover;
 }
 
 .job-preview-empty {
@@ -1536,8 +1508,7 @@ img {
 .job-source-thumb {
   width: 100%;
   max-height: 120px;
-  object-fit: contain;
-  display: block;
+  object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--border-strong);
   background: rgba(15, 23, 42, 0.72);

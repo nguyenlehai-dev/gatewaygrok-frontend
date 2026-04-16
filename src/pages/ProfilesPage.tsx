@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { formatDate, parseTags } from "../lib/format";
 import { providerVisuals } from "../lib/providers";
-import type { Category, MetaRecord, Profile, ProxyRecord, RuntimeStatusRecord, SessionCheckRecord } from "../types";
+import type { Category, MetaRecord, Profile, ProxyRecord, SessionCheckRecord } from "../types";
 
 type ProfileFormState = {
   name: string;
@@ -69,9 +69,6 @@ export function ProfilesPage({
   onImportCookies,
   onSessionCheck,
   onLaunchLogin,
-  onLaunchRuntime,
-  onRuntimeStatus,
-  onStopRuntime,
 }: {
   meta: MetaRecord | null;
   profiles: Profile[];
@@ -82,9 +79,6 @@ export function ProfilesPage({
   onImportCookies: (profileId: string, file: File) => Promise<void>;
   onSessionCheck: (profileId: string) => Promise<SessionCheckRecord>;
   onLaunchLogin: (profileId: string) => Promise<void>;
-  onLaunchRuntime: (profileId: string, display?: string) => Promise<void>;
-  onRuntimeStatus: (profileId: string) => Promise<RuntimeStatusRecord>;
-  onStopRuntime: (profileId: string, display?: string) => Promise<void>;
 }) {
   const [form, setForm] = useState<ProfileFormState>(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -101,8 +95,6 @@ export function ProfilesPage({
     }
   });
   const [checkingId, setCheckingId] = useState<string | null>(null);
-  const [runtimeBusyId, setRuntimeBusyId] = useState<string | null>(null);
-  const [runtimeStatuses, setRuntimeStatuses] = useState<Record<string, RuntimeStatusRecord>>({});
 
   const sortedProfiles = useMemo(
     () => [...profiles].sort((a, b) => a.name.localeCompare(b.name)),
@@ -359,11 +351,9 @@ export function ProfilesPage({
               </tr>
             </thead>
             <tbody>
-              {sortedProfiles.map((profile, index) => {
+              {sortedProfiles.map((profile) => {
                 const selectedFile = cookieUploads[profile.id];
                 const session = sessionChecks[profile.id];
-                const runtime = runtimeStatuses[profile.id];
-                const display = `:10${index + 1}`;
                 return (
                   <tr key={profile.id}>
                     <td>
@@ -442,23 +432,9 @@ export function ProfilesPage({
                         {session?.requires_live_browser ? (
                           <small>
                             {session.live_browser_connected
-                              ? "Grok can run jobs on this live runtime browser."
-                              : "Launch no-VNC runtime for daily jobs, or launch login only when verification is needed."}
+                              ? "Grok can run jobs on this live profile browser."
+                              : "Launch login and keep that browser open before running Grok jobs."}
                           </small>
-                        ) : null}
-                        {runtime ? (
-                          <>
-                            <span
-                              className={`status-pill ${
-                                runtime.running && runtime.debug_port_open ? "status-browser_live" : "status-browser_missing"
-                              }`}
-                            >
-                              {runtime.running && runtime.debug_port_open ? "runtime online" : "runtime offline"}
-                            </span>
-                            <small>
-                              {runtime.debug_endpoint} · browsers {runtime.browser_process_count}
-                            </small>
-                          </>
                         ) : null}
                         {session?.indicators.length ? <small>{session.indicators.join(", ")}</small> : null}
                         <button
@@ -483,56 +459,6 @@ export function ProfilesPage({
                           onClick={() => void onLaunchLogin(profile.id)}
                         >
                           Launch login
-                        </button>
-                        <button
-                          className="mini-button"
-                          disabled={runtimeBusyId === profile.id}
-                          type="button"
-                          onClick={async () => {
-                            setRuntimeBusyId(profile.id);
-                            try {
-                              await onLaunchRuntime(profile.id, display);
-                              const result = await onRuntimeStatus(profile.id);
-                              setRuntimeStatuses((current) => ({ ...current, [profile.id]: result }));
-                            } finally {
-                              setRuntimeBusyId(null);
-                            }
-                          }}
-                        >
-                          {runtimeBusyId === profile.id ? "Launching..." : `Launch runtime ${display}`}
-                        </button>
-                        <button
-                          className="mini-button"
-                          disabled={runtimeBusyId === profile.id}
-                          type="button"
-                          onClick={async () => {
-                            setRuntimeBusyId(profile.id);
-                            try {
-                              const result = await onRuntimeStatus(profile.id);
-                              setRuntimeStatuses((current) => ({ ...current, [profile.id]: result }));
-                            } finally {
-                              setRuntimeBusyId(null);
-                            }
-                          }}
-                        >
-                          Runtime status
-                        </button>
-                        <button
-                          className="mini-button danger"
-                          disabled={runtimeBusyId === profile.id}
-                          type="button"
-                          onClick={async () => {
-                            setRuntimeBusyId(profile.id);
-                            try {
-                              await onStopRuntime(profile.id, display);
-                              const result = await onRuntimeStatus(profile.id);
-                              setRuntimeStatuses((current) => ({ ...current, [profile.id]: result }));
-                            } finally {
-                              setRuntimeBusyId(null);
-                            }
-                          }}
-                        >
-                          Stop runtime
                         </button>
                         {session ? (
                           <details className="session-details">

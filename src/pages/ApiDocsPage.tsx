@@ -189,7 +189,7 @@ const endpoints: EndpointCard[] = [
   "result_payload": {
     "target": "image",
     "media_urls": [
-      "https://flowgrok.plxeditor.com/storage/profiles/PROFILE_ID/output/42d72140-8613-4a53-a1df-1af4db95f4df-image-1.jpg"
+      "https://testflowgrok.plxeditor.com/storage/profiles/PROFILE_ID/output/42d72140-8613-4a53-a1df-1af4db95f4df-image-1.jpg"
     ],
     "provider": "grok",
     "page_url": "https://grok.com/imagine"

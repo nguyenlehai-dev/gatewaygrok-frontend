@@ -37,11 +37,88 @@ function getFileLabel(value: string): string {
   return parts.length ? parts[parts.length - 1] : value;
 }
 
+function isSensitiveContentError(errorMessage: string | null | undefined): boolean {
+  if (!errorMessage) {
+    return false;
+  }
+
+  const lower = errorMessage.toLowerCase();
+  return (
+    lower.includes("sensitive-content") ||
+    lower.includes("policy restriction") ||
+    lower.includes("contentpolicyblockederror") ||
+    lower.includes("18+") ||
+    lower.includes("adult") ||
+    lower.includes("nsfw") ||
+    lower.includes("blurred or hid the generated video result")
+  );
+}
+
+function isSensitiveContentJob(job: JobRecord): boolean {
+  return isSensitiveContentError(job.error_message);
+}
+
+function getFriendlyErrorMessage(errorMessage: string | null | undefined): string {
+  if (!errorMessage) {
+    return "";
+  }
+
+  const normalized = errorMessage.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (isSensitiveContentError(normalized)) {
+    return "18+ / Sensitive content blocked";
+  }
+
+  const lower = normalized.toLowerCase();
+  const categorizedMessages: Array<{ match: (value: string) => boolean; label: string }> = [
+    {
+      match: (value) =>
+        value.includes("make video") && (value.includes("hidden/blocked") || value.includes("did not show")),
+      label: "Video step blocked by Grok",
+    },
+    {
+      match: (value) =>
+        value.includes("submitbuttondisablederror") ||
+        value.includes("submit button not found") ||
+        value.includes("did not enable the submit button"),
+      label: "Submit button not available",
+    },
+    {
+      match: (value) =>
+        value.includes("connect your x account") ||
+        value.includes("session check") ||
+        value.includes("target page, context or browser has been closed") ||
+        value.includes("page closed") ||
+        value.includes("browser has been closed"),
+      label: "Profile session expired",
+    },
+    {
+      match: (value) => value.includes("upload") && value.includes("source image"),
+      label: "Source image upload issue",
+    },
+  ];
+
+  for (const entry of categorizedMessages) {
+    if (entry.match(lower)) {
+      return entry.label;
+    }
+  }
+
+  const tracebackIndex = normalized.indexOf("Traceback");
+  const withoutTraceback = tracebackIndex >= 0 ? normalized.slice(0, tracebackIndex).trim() : normalized;
+  const firstBlock = withoutTraceback.split(/\n\s*\n/)[0]?.trim() ?? withoutTraceback;
+  const firstLine = firstBlock.split("\n")[0]?.trim() ?? firstBlock;
+  return firstLine || "Job failed";
+}
+
 function getResultSummary(job: JobRecord): { title: string; detail: string } {
   if (job.error_message) {
     return {
       title: "Job failed",
-      detail: job.error_message,
+      detail: isSensitiveContentJob(job) ? "18+ / Sensitive content blocked" : getFriendlyErrorMessage(job.error_message),
     };
   }
 
@@ -109,58 +186,6 @@ function getFirstAvailablePreview(
   return null;
 }
 
-function getElapsedMs(since: string, nowMs: number): number {
-  const parsed = Date.parse(since);
-  if (Number.isNaN(parsed)) {
-    return 0;
-  }
-  return Math.max(0, nowMs - parsed);
-}
-
-function getEstimatedJobDurationMs(job: JobRecord): number {
-  const providerPayload = job.provider_payload ?? {};
-  const quality = typeof providerPayload.quality === "string" ? providerPayload.quality : "Standard";
-  const duration = typeof providerPayload.duration === "number" ? providerPayload.duration : 5;
-  const videoMode =
-    typeof providerPayload.video_mode === "string" ? providerPayload.video_mode : "text_to_video";
-
-  if (job.target === "video") {
-    const base = videoMode === "image_to_video" ? 180_000 : 220_000;
-    const normalizedQuality = quality.toLowerCase();
-    const qualityBoost =
-      normalizedQuality === "speed" || normalizedQuality === "low"
-        ? -20_000
-        : normalizedQuality === "standard" || normalizedQuality === "medium"
-          ? 0
-          : 35_000;
-    return Math.max(90_000, base + duration * 12_000 + qualityBoost);
-  }
-
-  const base = 75_000;
-  const normalizedQuality = quality.toLowerCase();
-  const qualityBoost =
-    normalizedQuality === "speed" || normalizedQuality === "low"
-      ? -15_000
-      : normalizedQuality === "standard" || normalizedQuality === "medium"
-        ? 10_000
-        : 28_000;
-  return Math.max(35_000, base + qualityBoost);
-}
-
-function getJobProgress(job: JobRecord, nowMs: number): number {
-  if (job.status === "succeeded" || job.status === "failed") {
-    return 100;
-  }
-  if (job.status === "pending") {
-    return 8;
-  }
-
-  const elapsedMs = getElapsedMs(job.created_at, nowMs);
-  const estimatedDurationMs = getEstimatedJobDurationMs(job);
-  const raw = Math.round((elapsedMs / estimatedDurationMs) * 100);
-  return Math.min(96, Math.max(12, raw));
-}
-
 export function JobsPage({
   meta,
   profiles,
@@ -196,21 +221,43 @@ export function JobsPage({
   const [videoMode, setVideoMode] = useState<"text_to_video" | "image_to_video">("text_to_video");
   const [aspectRatio, setAspectRatio] = useState("1:1");
   const [quality, setQuality] = useState("high");
-  const [duration, setDuration] = useState(5);
+  const [duration, setDuration] = useState(10);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceAssetPath, setSourceAssetPath] = useState("");
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState("");
+  const [uploadingSource, setUploadingSource] = useState(false);
+  const [submittingJob, setSubmittingJob] = useState(false);
   const [failedPreviews, setFailedPreviews] = useState<Record<string, true>>({});
   const [reviewJob, setReviewJob] = useState<JobRecord | null>(null);
   const [reviewMediaIndex, setReviewMediaIndex] = useState(0);
   const [page, setPage] = useState(1);
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const selectedProfile = profiles.find((profile) => profile.id === profileId);
-  const isGrokVideo = selectedProfile?.category === "grok" && target === "video";
-  const submitDisabled =
-    !profileId ||
-    !systemAuthVerified ||
-    ((isGrokVideo && videoMode === "image_to_video") ? !sourceAssetPath || !prompt.trim() : !prompt.trim());
+  const inferredProfile = selectedProfile ?? profiles[0];
+  const isAutoSelectProfile = !profileId;
+  const inferredCategory = inferredProfile?.category ?? null;
+  const isGrokImage = inferredProfile?.category === "grok" && target === "image";
+  const isGrokVideo = inferredProfile?.category === "grok" && target === "video";
+  const requiresPrompt = (isGrokVideo && videoMode === "text_to_video") || (!isGrokImage && !isGrokVideo);
+  const requiresSourceImage = isGrokVideo && videoMode === "image_to_video";
+  const requiresExplicitProfileForAsset = requiresSourceImage;
+  const submitBlockedReason = !systemAuthVerified
+    ? "API key hien tai chua verify trong session nay."
+    : !inferredProfile
+      ? "Khong tim thay profile kha dung tren prod."
+      : uploadingSource
+        ? "Dang upload source image. Vui long doi upload xong."
+        : submittingJob
+          ? "Dang gui job len queue prod."
+          : requiresExplicitProfileForAsset && !profileId
+            ? "Flow nay can chon profile cu the de luu source image vao dung profile."
+            : requiresSourceImage && !sourceAssetPath
+              ? "Ban can upload source image truoc khi submit."
+              : requiresPrompt && !prompt.trim()
+                ? "Ban can nhap prompt truoc khi submit."
+                : count < 1
+                  ? "Count phai lon hon hoac bang 1."
+                  : null;
+  const submitDisabled = Boolean(submitBlockedReason);
   const reviewProfile = profiles.find((profile) => profile.id === reviewJob?.profile_id);
   const reviewMedia = getMediaUrls(reviewJob);
   const reviewDebugScreenshot = getDebugScreenshot(reviewJob);
@@ -222,12 +269,18 @@ export function JobsPage({
   useEffect(() => {
     setVideoMode("text_to_video");
     setAspectRatio("1:1");
-    setQuality("Standard");
-    setDuration(5);
+    setQuality("high");
+    setDuration(10);
     setSourceFile(null);
     setSourceAssetPath("");
     setSourcePreviewUrl("");
   }, [profileId, target]);
+
+  useEffect(() => {
+    if (!profileId && isGrokVideo && videoMode === "image_to_video" && inferredProfile?.id) {
+      setProfileId(inferredProfile.id);
+    }
+  }, [profileId, isGrokVideo, videoMode, inferredProfile?.id]);
 
   useEffect(() => {
     setPage(1);
@@ -257,18 +310,6 @@ export function JobsPage({
   useEffect(() => {
     setReviewMediaIndex(0);
   }, [reviewJob?.id]);
-
-  useEffect(() => {
-    if (!jobs.some((job) => job.status === "running")) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 1500);
-
-    return () => window.clearInterval(timer);
-  }, [jobs]);
 
   useEffect(() => {
     if (!sourceFile) {
@@ -332,7 +373,9 @@ export function JobsPage({
           <label>
             <span>Profile</span>
             <select value={profileId} onChange={(event) => setProfileId(event.target.value)}>
-              <option value="">Select profile</option>
+              <option value="" disabled={isGrokVideo && videoMode === "image_to_video"}>
+                Auto select profile
+              </option>
               {profiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
                   {profile.name}
@@ -366,7 +409,7 @@ export function JobsPage({
               </select>
             </label>
           ) : null}
-          {selectedProfile?.category === "grok" ? (
+          {inferredCategory === "grok" ? (
             <label>
               <span>Aspect ratio</span>
               <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
@@ -378,22 +421,13 @@ export function JobsPage({
               </select>
             </label>
           ) : null}
-          {selectedProfile?.category === "grok" ? (
+          {inferredCategory === "grok" ? (
             <label>
-              <span>{isGrokVideo ? "Resolution / quality" : "Quality"}</span>
+              <span>Quality</span>
               <select value={quality} onChange={(event) => setQuality(event.target.value)}>
-                {isGrokVideo ? (
-                  <>
-                    <option value="480p">480p</option>
-                    <option value="720p">720p</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="Speed">Speed</option>
-                    <option value="Standard">Standard</option>
-                    <option value="Quality">Quality</option>
-                  </>
-                )}
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
               </select>
             </label>
           ) : null}
@@ -401,7 +435,7 @@ export function JobsPage({
             <label>
               <span>Duration</span>
               <input
-                min={6}
+                min={1}
                 max={10}
                 type="number"
                 value={duration}
@@ -413,7 +447,7 @@ export function JobsPage({
             <span>Prompt</span>
             <textarea rows={4} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
           </label>
-          {isGrokVideo && videoMode === "image_to_video" ? (
+          {isGrokImage || requiresSourceImage ? (
             <label className="wide">
               <span>Source image</span>
               <input type="file" accept="image/*" onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)} />
@@ -425,20 +459,25 @@ export function JobsPage({
           </label>
         </div>
         <div className="action-row">
-          {isGrokVideo && videoMode === "image_to_video" ? (
+          {isGrokImage || requiresSourceImage ? (
             <button
               className="ghost-button"
               type="button"
-              disabled={!profileId || !sourceFile}
+              disabled={!profileId || !sourceFile || uploadingSource || submittingJob}
               onClick={async () => {
                 if (!profileId || !sourceFile) {
                   return;
                 }
-                const uploaded = await onUploadAsset(profileId, sourceFile);
-                setSourceAssetPath(uploaded.stored_path);
+                setUploadingSource(true);
+                try {
+                  const uploaded = await onUploadAsset(profileId, sourceFile);
+                  setSourceAssetPath(uploaded.stored_path);
+                } finally {
+                  setUploadingSource(false);
+                }
               }}
             >
-              Upload source image
+              {uploadingSource ? "Uploading..." : "Upload source image"}
             </button>
           ) : null}
           <button
@@ -446,49 +485,92 @@ export function JobsPage({
             type="button"
             disabled={submitDisabled}
             onClick={async () => {
-              await onCreate({
-                profile_id: profileId,
-                target,
-                prompt,
-                negative_prompt: negativePrompt || null,
-                count,
-                provider_payload: isGrokVideo
-                  ? {
-                      video_mode: videoMode,
-                      source_asset_path: videoMode === "image_to_video" ? sourceAssetPath || null : null,
-                      aspect_ratio: aspectRatio,
-                      ratio: aspectRatio,
-                      quality,
-                      duration,
-                    }
-                  : {
-                      aspect_ratio: selectedProfile?.category === "grok" ? aspectRatio : undefined,
-                      ratio: selectedProfile?.category === "grok" ? aspectRatio : undefined,
-                      quality: selectedProfile?.category === "grok" ? quality : undefined,
-                    },
-              });
-              setPrompt("");
-              setNegativePrompt("");
-              setSourceFile(null);
-              setSourceAssetPath("");
+              setSubmittingJob(true);
+              try {
+                await onCreate({
+                  ...(profileId ? { profile_id: profileId } : {}),
+                  target,
+                  prompt,
+                  negative_prompt: negativePrompt || null,
+                  count,
+                  ratio: inferredCategory === "grok" ? aspectRatio : undefined,
+                  quality: inferredCategory === "grok" ? quality : undefined,
+                  duration: isGrokVideo ? duration : undefined,
+                  reference_images:
+                    (isGrokImage || (isGrokVideo && videoMode === "image_to_video")) && sourceAssetPath
+                      ? [sourceAssetPath]
+                      : undefined,
+                  provider_payload: isGrokVideo
+                    ? {
+                        video_mode: videoMode,
+                        source_asset_path: videoMode === "image_to_video" ? sourceAssetPath || null : null,
+                        aspect_ratio: aspectRatio,
+                        ratio: aspectRatio,
+                        quality,
+                        duration,
+                      }
+                    : {
+                        source_asset_path: isGrokImage ? sourceAssetPath || null : null,
+                        aspect_ratio: inferredCategory === "grok" ? aspectRatio : undefined,
+                        ratio: inferredCategory === "grok" ? aspectRatio : undefined,
+                        quality: inferredCategory === "grok" ? quality : undefined,
+                      },
+                });
+                setPrompt("");
+                setNegativePrompt("");
+                setSourceFile(null);
+                setSourceAssetPath("");
+              } finally {
+                setSubmittingJob(false);
+              }
             }}
           >
-            Submit job
+            {submittingJob ? "Submitting..." : "Submit job"}
           </button>
           <small className="muted">
-            {selectedProfile?.category === "grok" || selectedProfile?.category === "flow"
-              ? `For ${selectedProfile.category}, run Launch login, pass session check, and keep that profile browser open before submitting jobs.`
+            {submitBlockedReason
+              ? `Submit button dang khoa: ${submitBlockedReason}`
+              : submittingJob
+                ? "Job dang duoc gui len backend prod."
+                : "Form hop le. Bam Submit job de day vao queue."}
+          </small>
+          <small className="muted">
+            {inferredProfile?.category === "grok" || inferredProfile?.category === "flow"
+              ? `For ${inferredProfile.category}, make sure the profile passes session check in Profiles. Prod runtime now warms browser/session on demand, so you do not need to keep the profile browser open continuously.`
               : "Gateway will reject jobs until the selected profile passes session check in Profiles."}
           </small>
+          {isAutoSelectProfile ? (
+            <small className="muted">
+              Backend will auto-pick an available profile/session. For source-image flows, choose a specific profile first so the asset can be uploaded into that profile.
+            </small>
+          ) : null}
           {isGrokVideo && videoMode === "image_to_video" ? (
-            <small className="muted">{sourceAssetPath ? sourceAssetPath : "Upload a source image before submitting."}</small>
+            <small className="muted">
+              Image to video needs a fixed profile because the uploaded source image is stored inside that profile. The form will use a concrete prod profile instead of auto-select.
+            </small>
+          ) : null}
+          {isAutoSelectProfile && inferredCategory ? (
+            <small className="muted">
+              Current pool category hint: {inferredCategory}. Form options are being shown for the available prod profile pool.
+            </small>
+          ) : null}
+          {isGrokImage || requiresSourceImage ? (
+            <small className="muted">
+              {sourceAssetPath
+                ? sourceAssetPath
+                : isGrokImage
+                  ? "Source image la tuy chon cho image job. Ban co the bo qua va submit bang prompt."
+                  : "Upload a source image before submitting."}
+            </small>
           ) : null}
         </div>
-        {isGrokVideo && videoMode === "image_to_video" ? (
+        {isGrokImage || requiresSourceImage ? (
           <div className="source-preview-panel">
             <div className="stacked-cell">
               <strong>Source preview</strong>
-              <small>{sourceAssetPath || (sourceFile ? sourceFile.name : "No source image selected")}</small>
+              <small>
+                {sourceAssetPath || (sourceFile ? sourceFile.name : isGrokImage ? "Optional source image" : "No source image selected")}
+              </small>
             </div>
             {sourcePreviewUrl ? <img alt="Source preview" className="source-preview-image" src={sourcePreviewUrl} /> : null}
             {!sourcePreviewUrl ? <div className="job-preview-empty">No preview</div> : null}
@@ -522,7 +604,7 @@ export function JobsPage({
           {pagedJobs.map((job) => {
             const profile = profiles.find((item) => item.id === job.profile_id);
             const resultSummary = getResultSummary(job);
-            const progress = getJobProgress(job, nowMs);
+            const sensitiveContentBlocked = isSensitiveContentJob(job);
             const firstMedia = getFirstMedia(job);
             const debugScreenshot = getDebugScreenshot(job);
             const sourceAsset = getSourceAsset(job);
@@ -531,7 +613,7 @@ export function JobsPage({
             const sourcePreviewUrl = sourceAsset ? toBackendStorageUrl(sourceAsset) : null;
 
             return (
-              <article className="job-card" key={job.id}>
+              <article className={`job-card${sensitiveContentBlocked ? " job-card-sensitive-blocked" : ""}`} key={job.id}>
                 <div className="job-card-meta">
                   <div className="identity-cell">
                     {profile ? (
@@ -551,17 +633,7 @@ export function JobsPage({
                     </div>
                   </div>
                   <span className={`status-pill status-${job.status}`}>{job.status}</span>
-                  {job.status === "running" ? (
-                    <div className="job-progress-block" aria-label={`Estimated progress ${progress}%`}>
-                      <div className="job-progress-head">
-                        <small>Estimated progress</small>
-                        <strong>{progress}%</strong>
-                      </div>
-                      <div className="job-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
-                        <div className="job-progress-fill" style={{ width: `${progress}%` }} />
-                      </div>
-                    </div>
-                  ) : null}
+                  {sensitiveContentBlocked ? <span className="status-pill status-sensitive">18+</span> : null}
                   <small>{formatDate(job.updated_at)}</small>
                   <code>{job.id}</code>
                 </div>
@@ -578,7 +650,7 @@ export function JobsPage({
                       <strong>{resultSummary.title}</strong>
                       <small>{resultSummary.detail}</small>
                       {job.result_payload?.provider ? <small>Provider: {String(job.result_payload.provider)}</small> : null}
-                      {job.error_message ? <small>{job.error_message}</small> : null}
+                      {job.error_message ? <small>Open Review for full error details.</small> : null}
                     </div>
                   </div>
 
@@ -597,7 +669,6 @@ export function JobsPage({
                         controls
                         muted
                         playsInline
-                        poster={debugScreenshot ? toBackendStorageUrl(debugScreenshot) : undefined}
                         preload="metadata"
                         src={previewUrl}
                         onError={() => markPreviewFailed(previewSource)}
@@ -764,7 +835,6 @@ export function JobsPage({
                             className="review-media-preview"
                             controls
                             playsInline
-                            poster={reviewDebugScreenshot ? toBackendStorageUrl(reviewDebugScreenshot) : undefined}
                             src={activeReviewPreviewUrl}
                             onError={() => markPreviewFailed(activeReviewPreviewSource)}
                           />

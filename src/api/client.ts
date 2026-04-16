@@ -9,8 +9,6 @@ import type {
   Profile,
   ProfileAssetRecord,
   ProxyRecord,
-  RuntimeLaunchRecord,
-  RuntimeStatusRecord,
   SessionCheckRecord,
   SettingsRecord,
 } from "../types";
@@ -49,10 +47,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         const state = payload.detail.session_state ? ` (${payload.detail.session_state})` : "";
         throw new Error(`${summary}${state}`);
       }
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
+    } catch {
+      throw new Error(text || `Request failed: ${response.status}`);
     }
     throw new Error(text || `Request failed: ${response.status}`);
   }
@@ -106,23 +102,6 @@ export const api = {
         method: "POST",
       },
     ),
-  launchRuntime: (profileId: string, display?: string) =>
-    request<RuntimeLaunchRecord>(`/profiles/${profileId}/launch-runtime`, {
-      method: "POST",
-      body: JSON.stringify({
-        display,
-        start_url: "https://grok.com/imagine",
-      }),
-    }),
-  runtimeStatus: (profileId: string) => request<RuntimeStatusRecord>(`/profiles/${profileId}/runtime-status`),
-  stopRuntime: (profileId: string, display?: string) =>
-    request<{ stopped: boolean; profile_id: string; provider: string; message: string }>(
-      `/profiles/${profileId}/stop-runtime`,
-      {
-        method: "POST",
-        body: JSON.stringify({ display }),
-      },
-    ),
   getProxies: () => request<ProxyRecord[]>("/proxies"),
   createProxy: (body: Record<string, unknown>) =>
     request<ProxyRecord>("/proxies", { method: "POST", body: JSON.stringify(body) }),
@@ -146,6 +125,24 @@ export const api = {
     request<{ status: string; name: string; key_prefix: string }>(`/client/verify`, {
       headers: { "X-API-Key": key },
     }),
+  createClientJob: async (key: string, body: Record<string, unknown>) => {
+    try {
+      return await request<JobRecord>("/client/generate", {
+        method: "POST",
+        headers: { "X-API-Key": key },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      if (!(error instanceof Error) || !/404|405/.test(error.message)) {
+        throw error;
+      }
+    }
+    return request<JobRecord>("/client/jobs", {
+      method: "POST",
+      headers: { "X-API-Key": key },
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 export function setAdminToken(token: string | null) {
@@ -167,10 +164,8 @@ export function toBackendStorageUrl(value: string): string {
   }
   const normalized = value.replace(/\\/g, "/").replace(/^\.?\//, "");
   if (normalized.startsWith("storage/")) {
-    return `${API_ORIGIN}/${normalized}`;
-  }
-  if (normalized.startsWith("storage-test/")) {
-    return `${API_ORIGIN}/storage/${normalized.slice("storage-test/".length)}`;
+    const origin = API_ORIGIN || window.location.origin;
+    return `${origin}/${normalized}`;
   }
   return value;
 }
