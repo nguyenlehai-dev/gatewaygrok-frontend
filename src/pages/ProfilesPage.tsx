@@ -100,6 +100,11 @@ export function ProfilesPage({
     () => [...profiles].sort((a, b) => a.name.localeCompare(b.name)),
     [profiles],
   );
+  const activeProfiles = profiles.filter((profile) => profile.is_active).length;
+  const browserReadyProfiles = Object.values(sessionChecks).filter(
+    (session) => session.state === "authenticated" && session.live_browser_connected,
+  ).length;
+  const cookieReadyProfiles = profiles.filter((profile) => Boolean(profile.cookie_file)).length;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -168,6 +173,24 @@ export function ProfilesPage({
             <p className="eyebrow">Profiles</p>
             <h2>Cookie-isolated browser identities</h2>
           </div>
+        </div>
+
+        <div className="profile-summary-grid">
+          <article className="profile-summary-card">
+            <small>Total profiles</small>
+            <strong>{profiles.length}</strong>
+            <span>{activeProfiles} active</span>
+          </article>
+          <article className="profile-summary-card">
+            <small>Cookie ready</small>
+            <strong>{cookieReadyProfiles}</strong>
+            <span>{profiles.length - cookieReadyProfiles} missing</span>
+          </article>
+          <article className="profile-summary-card">
+            <small>Browser live</small>
+            <strong>{browserReadyProfiles}</strong>
+            <span>ready for queue work</span>
+          </article>
         </div>
 
         <div className="form-grid">
@@ -305,6 +328,13 @@ export function ProfilesPage({
             <p className="eyebrow">Inventory</p>
             <h2>Profile list</h2>
           </div>
+        </div>
+
+        <div className="profiles-helper-strip">
+          <span>1. Upload cookie</span>
+          <span>2. Check session</span>
+          <span>3. Launch login if needed</span>
+          <span>4. Keep browser alive for Grok jobs</span>
         </div>
 
         <div className="data-table-wrap">

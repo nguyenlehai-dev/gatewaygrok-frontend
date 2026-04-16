@@ -125,6 +125,24 @@ export const api = {
     request<{ status: string; name: string; key_prefix: string }>(`/client/verify`, {
       headers: { "X-API-Key": key },
     }),
+  createClientJob: async (key: string, body: Record<string, unknown>) => {
+    try {
+      return await request<JobRecord>("/client/generate", {
+        method: "POST",
+        headers: { "X-API-Key": key },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      if (!(error instanceof Error) || !/404|405/.test(error.message)) {
+        throw error;
+      }
+    }
+    return request<JobRecord>("/client/jobs", {
+      method: "POST",
+      headers: { "X-API-Key": key },
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 export function setAdminToken(token: string | null) {
