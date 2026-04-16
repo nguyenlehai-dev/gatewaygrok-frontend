@@ -1127,6 +1127,12 @@ img {
   color: #fecaca;
 }
 
+.status-warning {
+  background: rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fde68a;
+}
+
 .status-unknown {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -1472,6 +1478,10 @@ img {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.job-warning-copy {
+  color: #fde68a;
 }
 
 .job-card-preview {

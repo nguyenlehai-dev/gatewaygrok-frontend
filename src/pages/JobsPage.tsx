@@ -95,6 +95,14 @@ function isRuntimeBlocked(job: JobRecord): boolean {
   return getRuntimePayload(job)?.blocked === true;
 }
 
+function hasLegacyArtifactWarning(job: JobRecord): boolean {
+  return getRuntimePayload(job)?.legacy_artifact_warning === true;
+}
+
+function getLegacyArtifactMessage(job: JobRecord): string | null {
+  return getRuntimeText(job, "legacy_artifact_message");
+}
+
 function isSensitiveContentJob(job: JobRecord): boolean {
   return isSensitiveContentError(job.error_message) || isRuntimeBlocked(job);
 }
@@ -663,6 +671,8 @@ export function JobsPage({
             const runtimeProgress = getRuntimeProgress(job);
             const runtimeMessage = getRuntimeMessage(job);
             const runtimeNotice = getRuntimeText(job, "provider_notice");
+            const legacyArtifactWarning = hasLegacyArtifactWarning(job);
+            const legacyArtifactMessage = getLegacyArtifactMessage(job);
             const showRuntimePreview = !previewUrl && (job.status === "pending" || job.status === "running" || isRuntimeBlocked(job));
 
             return (
@@ -689,6 +699,7 @@ export function JobsPage({
                     {runtimeProgress !== null && job.status === "running" ? `${job.status} ${runtimeProgress}%` : job.status}
                   </span>
                   {sensitiveContentBlocked ? <span className="status-pill status-sensitive">18+</span> : null}
+                  {legacyArtifactWarning ? <span className="status-pill status-warning">legacy</span> : null}
                   <small>{formatDate(job.updated_at)}</small>
                   <code>{job.id}</code>
                 </div>
@@ -705,6 +716,7 @@ export function JobsPage({
                       <strong>{resultSummary.title}</strong>
                       <small>{resultSummary.detail}</small>
                       {job.result_payload?.provider ? <small>Provider: {String(job.result_payload.provider)}</small> : null}
+                      {legacyArtifactMessage ? <small className="job-warning-copy">{legacyArtifactMessage}</small> : null}
                       {job.error_message ? <small>Open Review for full error details.</small> : null}
                     </div>
                   </div>
