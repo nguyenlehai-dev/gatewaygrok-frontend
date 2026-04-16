@@ -54,8 +54,49 @@ function isSensitiveContentError(errorMessage: string | null | undefined): boole
   );
 }
 
+function getRuntimePayload(job: JobRecord | null): Record<string, unknown> | null {
+  const runtime = job?.result_payload?.runtime;
+  if (!runtime || typeof runtime !== "object" || Array.isArray(runtime)) {
+    return null;
+  }
+  return runtime as Record<string, unknown>;
+}
+
+function getRuntimeNumber(job: JobRecord | null, key: string): number | null {
+  const value = getRuntimePayload(job)?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function getRuntimeText(job: JobRecord | null, key: string): string | null {
+  const value = getRuntimePayload(job)?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getRuntimeProgress(job: JobRecord): number | null {
+  const runtimeProgress = getRuntimeNumber(job, "progress_percent");
+  if (runtimeProgress === null) {
+    return null;
+  }
+  return Math.max(0, Math.min(100, Math.round(runtimeProgress)));
+}
+
+function getRuntimeMessage(job: JobRecord): string | null {
+  return getRuntimeText(job, "progress_message") ?? getRuntimeText(job, "stage");
+}
+
+function isRuntimeBlocked(job: JobRecord): boolean {
+  return getRuntimePayload(job)?.blocked === true;
+}
+
 function isSensitiveContentJob(job: JobRecord): boolean {
-  return isSensitiveContentError(job.error_message);
+  return isSensitiveContentError(job.error_message) || isRuntimeBlocked(job);
 }
 
 function getFriendlyErrorMessage(errorMessage: string | null | undefined): string {
@@ -119,6 +160,14 @@ function getResultSummary(job: JobRecord): { title: string; detail: string } {
     return {
       title: "Job failed",
       detail: isSensitiveContentJob(job) ? "18+ / Sensitive content blocked" : getFriendlyErrorMessage(job.error_message),
+    };
+  }
+
+  const runtimeMessage = getRuntimeMessage(job);
+  if ((job.status === "running" || job.status === "pending") && runtimeMessage) {
+    return {
+      title: job.status === "running" ? "Processing" : "Queued",
+      detail: runtimeMessage,
     };
   }
 
@@ -611,6 +660,10 @@ export function JobsPage({
             const previewSource = getFirstAvailablePreview([firstMedia, debugScreenshot], failedPreviews);
             const previewUrl = previewSource ? toBackendStorageUrl(previewSource) : null;
             const sourcePreviewUrl = sourceAsset ? toBackendStorageUrl(sourceAsset) : null;
+            const runtimeProgress = getRuntimeProgress(job);
+            const runtimeMessage = getRuntimeMessage(job);
+            const runtimeNotice = getRuntimeText(job, "provider_notice");
+            const showRuntimePreview = !previewUrl && (job.status === "pending" || job.status === "running" || isRuntimeBlocked(job));
 
             return (
               <article className={`job-card${sensitiveContentBlocked ? " job-card-sensitive-blocked" : ""}`} key={job.id}>
@@ -632,7 +685,9 @@ export function JobsPage({
                       </div>
                     </div>
                   </div>
-                  <span className={`status-pill status-${job.status}`}>{job.status}</span>
+                  <span className={`status-pill status-${job.status}`}>
+                    {runtimeProgress !== null && job.status === "running" ? `${job.status} ${runtimeProgress}%` : job.status}
+                  </span>
                   {sensitiveContentBlocked ? <span className="status-pill status-sensitive">18+</span> : null}
                   <small>{formatDate(job.updated_at)}</small>
                   <code>{job.id}</code>
@@ -674,7 +729,33 @@ export function JobsPage({
                         onError={() => markPreviewFailed(previewSource)}
                       />
                     ) : null}
-                    {!previewUrl ? <div className="job-preview-empty">No preview</div> : null}
+                    {showRuntimePreview ? (
+                      <div className={`job-runtime-preview${isRuntimeBlocked(job) ? " blocked" : ""}`}>
+                        <div className="runtime-preview-orbit" aria-hidden="true" />
+                        <div className="runtime-preview-content">
+                          <strong>
+                            {isRuntimeBlocked(job)
+                              ? "Grok blocked this result"
+                              : runtimeProgress !== null
+                                ? `Generating ${runtimeProgress}%`
+                                : job.status === "pending"
+                                  ? "Queued"
+                                  : "Waiting for Grok progress"}
+                          </strong>
+                          <small>
+                            {isRuntimeBlocked(job)
+                              ? runtimeNotice ?? resultSummary.detail
+                              : runtimeMessage ?? resultSummary.detail}
+                          </small>
+                          {!isRuntimeBlocked(job) ? (
+                            <div className="runtime-progress-track" aria-label="Grok generation progress">
+                              <span style={{ width: `${runtimeProgress ?? 8}%` }} />
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                    {!previewUrl && !showRuntimePreview ? <div className="job-preview-empty">No preview</div> : null}
                     {sourcePreviewUrl && isImageUrl(sourceAsset ?? "") ? (
                       <div className="job-source-preview">
                         <small>Source image</small>
